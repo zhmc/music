@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}柳城点歌系统{% endblock %}</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/aplayer/1.10.1/APlayer.min.js"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/APlayer.min.css') }}">
+    
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='images/favicon.ico') }}" type="image/x-icon">
+</head>
+
+<body>
+    <header>
+        <div class="header-content">
+            <div class="header-logo">
+                <img src="{{ url_for('static', filename='images/logo.png') }}" alt="Logo" height="60">
+            </div>
+            <h1 class="header-title">校园点歌系统</h1>
+        </div>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div>
+                <p class="mb-0">© 2025 柳城点歌系统 | <a href="https://beian.miit.gov.cn/" target="_blank"
+                        class="footer-link">备案号：闽ICP备2024053695号</a> | 开发者：陈俊辉</p>
+            </div>
+            <div class="footer-links">
+                <a href="{{ url_for('contact') }}" class="footer-link">联系我们</a>
+                <span class="footer-separator">|</span>
+                <a href="{{ url_for('changelog') }}" class="footer-link">更新日志</a>
+            </div>
+        </div>
+    </footer>
+</body>
+
+</html>

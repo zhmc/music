@@ -1,0 +1,28 @@
+<!-- templates/contact.html -->
+{% extends "base.html" %}
+
+{% block title %}联系我们 - 柳城点歌系统{% endblock %}
+
+{% block content %}
+<div class="center-container">
+    <div class="center-content">
+        <div class="form-card">
+            <h2 class="text-center">联系我们</h2>
+            <div class="contact-info">
+                <h3>联系方式</h3>
+                <p><strong>开发者：</strong>陈俊辉</p>
+                <p><strong>邮箱：</strong>comwwee@qq.com</p>
+                <p><strong>微信号：</strong>zh_mcbilibilinb</p>
+                <p><strong>QQ：</strong>3023555095</p>
+                
+                <h3 class="mt-4">反馈建议</h3>
+                <p>如果您有任何建议或问题，请通过以上方式联系我们，我们会尽快回复您。请说明来意！</p>
+                
+                <div class="text-center mt-4">
+                    <a href="{{ url_for('index') }}" class="btn btn-outline-primary">返回首页</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

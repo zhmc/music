@@ -1,0 +1,659 @@
+<!-- templates/admin.html -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.min.css') }}">
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <h2 class="text-center">今日点歌管理</h2>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- 系统状态显示 -->
+    {% if today_requests %}
+    <div class="alert alert-info">
+        <strong>系统状态:</strong>
+        {% if system_status.requests_paused %}
+        <span class="text-danger">点歌已暂停 - {{ system_status.pause_reason }}</span>
+        {% else %}
+        <span class="text-success">点歌功能正常</span>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- 在系统管理部分添加自动审核按钮 -->
+    <div class="mt-3">
+        <h5>系统管理</h5>
+        <!-- 只有admin角色才能看到这些管理按钮 -->
+        {% if user_role == 'admin' %}
+        <div class="d-flex flex-wrap gap-2 mb-3">
+            <!-- 暂停/恢复点歌功能 -->
+            <form method="POST" action="{{ url_for('toggle_pause') }}" class="d-inline">
+                <input type="hidden" name="reason" value="点歌功能已暂停">
+                <button type="submit"
+                    class="btn btn-{% if system_status.requests_paused %}success{% else %}warning{% endif %} btn-custom">
+                    {% if system_status.requests_paused %}恢复点歌{% else %}暂停点歌{% endif %}
+                </button>
+            </form>
+
+            <!-- 清空歌曲列表 -->
+            <button type="button" class="btn btn-danger btn-custom" onclick="showClearListModal()">
+                清空列表
+            </button>
+
+            <!-- 自动审核按钮 -->
+            <button type="button" class="btn btn-info btn-custom" onclick="startAutoReview()">
+                自动审核
+            </button>
+
+            <!-- 批量删除按钮 -->
+            <button type="button" class="btn btn-danger btn-custom" id="batchDeleteBtn" disabled
+                onclick="showBatchDeleteModal()">
+                批量删除
+            </button>
+
+        </div>
+        {% else %}
+        <!-- control角色只显示基本功能提示 -->
+        <div class="alert alert-info">
+            您当前使用的是控制账户，只能进行播放、下载和导出操作。
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="mt-4">
+        <h5>歌曲播放器</h5>
+        <div id="aplayer"></div>
+    </div>
+
+    {% if today_requests %}
+    <div class="table-responsive">
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <!-- 只有admin角色才能看到复选框 -->
+                    {% if user_role == 'admin' %}
+                    <th>
+                        <input type="checkbox" id="selectAllCheckbox">
+                    </th>
+                    {% endif %}
+                    <th>歌曲名称</th>
+                    <th>班级</th>
+                    <th>姓名</th>
+                    <th>投票数</th>
+                    <!-- 只有admin角色才能看到操作列 -->
+                    {% if user_role == 'admin' %}
+                    <th>操作</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for request in today_requests %}
+                <tr>
+                    <!-- 只有admin角色才能看到复选框 -->
+                    {% if user_role == 'admin' %}
+                    <td>
+                        <input type="checkbox" class="song-checkbox" data-id="{{ request.id }}">
+                    </td>
+                    {% endif %}
+                    <td>{{ request.song_name }}</td>
+                    <td>{{ request.class_name }}</td>
+                    <td>{{ request.student_name }}</td>
+                    <td>{{ request.votes }}</td>
+                    <!-- 只有admin角色才能看到删除按钮 -->
+                    {% if user_role == 'admin' %}
+                    <td>
+                        <form method="POST" action="{{ url_for('delete_request', request_id=request.id) }}">
+                            <button type="submit" class="btn btn-sm btn-danger">删除</button>
+                        </form>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="text-center">
+        <p>今日尚无点歌请求</p>
+    </div>
+
+    {% endif %}
+
+    <!-- 添加导出按钮 - 所有角色都可以看到 -->
+    <div class="mt-4 text-center">
+        {% if today_requests %}
+        <a href="{{ url_for('export_requests') }}" class="btn btn-outline-primary mr-2">导出为Excel</a>
+        <a href="{{ url_for('download_songs') }}" class="btn btn-outline-primary mr-2">下载歌曲包</a>
+        {% endif %}
+        <!-- 只有admin角色才能看到公告管理 -->
+        {% if user_role == 'admin' %}
+        <a href="{{ url_for('admin_announcement') }}" class="btn btn-outline-primary">公告管理</a>
+        {% endif %}
+    </div>
+
+    <!-- 清空列表确认模态框 - 只有admin角色能看到 -->
+    {% if user_role == 'admin' %}
+    <div id="clearListModal"
+        style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div
+            style="background-color: white; margin: 15% auto; padding: 20px; border-radius: 5px; width: 80%; max-width: 500px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h5 id="clearListModalLabel">确认清空列表</h5>
+                <span style="cursor: pointer; font-size: 1.5rem;" onclick="hideClearListModal()">&times;</span>
+            </div>
+            <form method="POST" action="{{ url_for('clear_list') }}" id="clearListForm">
+                <div style="margin-bottom: 15px;">
+                    <p>您确定要清空今日点歌列表吗？此操作不可撤销。</p>
+                    <div style="margin-bottom: 15px;">
+                        <label for="adminPassword" style="display: block; margin-bottom: 5px;">请输入管理员密码确认:</label>
+                        <input type="password"
+                            style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
+                            id="adminPassword" name="password" required>
+                    </div>
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button"
+                        style="padding: 8px 16px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                        onclick="hideClearListModal()">取消</button>
+                    <button type="submit"
+                        style="padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">确认清空</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 自动审核模态框 - 只有admin角色能看到 -->
+    {% if user_role == 'admin' %}
+    <div id="autoReviewModal"
+        style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div
+            style="background-color: white; margin: 10% auto; padding: 20px; border-radius: 5px; width: 90%; max-width: 800px; max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h5>自动审核</h5>
+                <span style="cursor: pointer; font-size: 1.5rem;" onclick="closeAutoReviewModal()">&times;</span>
+            </div>
+
+            <!-- 审核过程显示区域 -->
+            <div id="reviewProcess" style="text-align: center; padding: 20px;">
+                <div class="spinner-border" role="status">
+                    <span class="sr-only"></span>
+                </div>
+                <p style="margin-top: 15px;">AI正在审核歌曲，请稍候...</p>
+            </div>
+
+            <!-- 审核结果表格 -->
+            <div id="reviewResults" style="display: none;">
+                <div style="margin-bottom: 15px;">
+                    <p>AI已完成审核，请确认审核结果：</p>
+                    <button type="button" class="btn btn-success" onclick="applyReviewResults()">应用审核结果</button>
+                    <button type="button" class="btn btn-secondary" onclick="selectAllReview(true)">全选</button>
+                    <button type="button" class="btn btn-secondary" onclick="selectAllReview(false)">全不选</button>
+                </div>
+
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>选择</th>
+                            <th>歌曲名称</th>
+                            <th>是否通过</th>
+                            <th>原因</th>
+                        </tr>
+                    </thead>
+                    <tbody id="reviewResultsBody">
+                        <!-- 审核结果将在这里动态插入 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 批量删除确认模态框 - 只有admin角色能看到 -->
+    {% if user_role == 'admin' %}
+    <div id="batchDeleteModal"
+        style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+        <div
+            style="background-color: white; margin: 15% auto; padding: 20px; border-radius: 5px; width: 80%; max-width: 500px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h5>确认批量删除</h5>
+                <span style="cursor: pointer; font-size: 1.5rem;" onclick="hideBatchDeleteModal()">&times;</span>
+            </div>
+            <form method="POST" action="{{ url_for('batch_delete') }}" id="batchDeleteForm">
+                <div style="margin-bottom: 15px;">
+                    <p>您确定要删除选中的 <span id="deleteCount">0</span> 首歌曲吗？此操作不可撤销。</p>
+                    <input type="hidden" name="selected_songs" id="selectedSongsInput">
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button type="button"
+                        style="padding: 8px 16px; background-color: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;"
+                        onclick="hideBatchDeleteModal()">取消</button>
+                    <button type="submit"
+                        style="padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">确认删除</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 进度条模态框 -->
+    <div id="downloadModal" class="download-modal" style="display: none;">
+        <div class="download-modal-content">
+            <div class="modal-header">
+                <h3>歌曲打包中...</h3>
+            </div>
+            <div class="modal-body">
+                <div class="progress-container">
+                    <div id="downloadProgress" class="progress-bar"></div>
+                </div>
+                <p id="statusText">准备下载歌曲，请稍候...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            try {
+                // 使用 Jinja2 提供的 JSON 数据
+                const songs = {{ today_requests| tojson
+            }};
+        console.log('songs:', songs);
+
+        // 安全检查：确保 songs 是数组
+        if (!Array.isArray(songs)) {
+            console.warn('songs 数据不是数组，可能是 undefined 或 null');
+            const aplayerContainer = document.getElementById('aplayer');
+            aplayerContainer.innerHTML = '<p class="text-muted">暂无歌曲可播放</p>';
+            return;
+        }
+
+        // 转换歌曲数据格式以匹配 APlayer 的要求
+        const validSongs = songs
+            .filter(song => song.url)
+            .map(song => ({
+                id: song.id,
+                name: song.song_name || song.name || '未知歌曲',  // 使用 song_name 或回退到 name
+                artist: song.artists || song.artist || '未知歌手',  // 使用 artists 或回退到 artist
+                url: song.url,
+                cover: song.cover_url || song.cover || '',  // 使用 cover_url 或回退到 cover
+                lrc: song.lyric || song.lrc || '',  // 使用 lyric 或回退到 lrc
+                album: song.album || ''
+            }));
+
+        // 缓存DOM元素引用
+        const aplayerContainer = document.getElementById('aplayer');
+
+        if (validSongs.length > 0) {
+            const aplayerConfig = {
+                container: aplayerContainer,
+                autoplay: false,
+                theme: '#b7d9f4',
+                loop: 'all',
+                order: 'list',
+                preload: 'auto',
+                volume: 0.7,
+                mutex: true,
+                listFolded: false,
+                listMaxHeight: '300px',
+                lrcType: 1,
+                audio: validSongs
+            };
+
+            const ap = new APlayer(aplayerConfig);
+        } else {
+            aplayerContainer.innerHTML = '<p class="text-muted">暂无歌曲可播放</p>';
+        }
+        } catch (error) {
+            console.error('APlayer初始化失败:', error);
+            const aplayerContainer = document.getElementById('aplayer');
+            if (aplayerContainer) {
+                aplayerContainer.innerHTML = '<p class="text-muted">播放器加载失败</p>';
+            }
+        }
+    });
+    </script>
+
+    <script>
+        // 自动审核相关函数
+        function startAutoReview() {
+            // 显示模态框
+            document.getElementById('autoReviewModal').style.display = 'block';
+
+            // 显示审核过程
+            document.getElementById('reviewProcess').style.display = 'block';
+            document.getElementById('reviewResults').style.display = 'none';
+
+            // 发起审核请求
+            fetch('/admin/auto_review', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // 解析审核结果字符串为JSON对象
+                        let results;
+                        if (typeof data.results === 'string') {
+                            try {
+                                // 提取JSON部分
+                                const jsonString = data.results.replace(/```json\s*|\s*```/g, '');
+                                results = JSON.parse(jsonString);
+                            } catch (parseError) {
+                                console.error('解析审核结果失败:', parseError);
+                                document.getElementById('reviewProcess').innerHTML =
+                                    `<div class="alert alert-danger">解析审核结果失败</div>`;
+                                return;
+                            }
+                        } else {
+                            results = data.results;
+                        }
+                        // 显示审核结果
+                        displayReviewResults(results);
+                    } else {
+                        // 显示错误信息
+                        document.getElementById('reviewProcess').innerHTML =
+                            `<div class="alert alert-danger">审核失败: ${data.message}</div>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('审核出错:', error);
+                    document.getElementById('reviewProcess').innerHTML =
+                        `<div class="alert alert-danger">审核出错: ${error.message}</div>`;
+                });
+        }
+
+        function displayReviewResults(results) {
+            // 隐藏审核过程，显示结果
+            document.getElementById('reviewProcess').style.display = 'none';
+            document.getElementById('reviewResults').style.display = 'block';
+
+            // 填充审核结果表格
+            const tbody = document.getElementById('reviewResultsBody');
+            tbody.innerHTML = '';
+
+            results.forEach((result, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+            <td><input type="checkbox" class="review-checkbox" data-index="${index}" checked></td>
+            <td>${result.歌曲名称}</td>
+            <td>${result.是否通过 ? '通过' : '不通过'}</td>
+            <td>${result.原因}</td>
+        `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function applyReviewResults() {
+            // 收集选中的审核结果
+            const checkboxes = document.querySelectorAll('.review-checkbox:checked');
+            const selectedIndices = Array.from(checkboxes).map(cb => parseInt(cb.dataset.index));
+
+            if (selectedIndices.length === 0) {
+                alert('请至少选择一项审核结果');
+                return;
+            }
+
+            // 发送应用审核结果的请求
+            fetch('/admin/apply_review_results', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ indices: selectedIndices })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('审核结果已应用');
+                        closeAutoReviewModal();
+                        location.reload(); // 刷新页面以显示更改
+                    } else {
+                        alert(`应用审核结果失败: ${data.message}`);
+                    }
+                })
+                .catch(error => {
+                    console.error('应用审核结果出错:', error);
+                    alert(`应用审核结果出错: ${error.message}`);
+                });
+        }
+
+        function selectAllReview(select) {
+            const checkboxes = document.querySelectorAll('.review-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = select;
+            });
+        }
+
+        function closeAutoReviewModal() {
+            document.getElementById('autoReviewModal').style.display = 'none';
+        }
+        // 全选/取消全选功能
+        document.addEventListener('DOMContentLoaded', function () {
+            const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+            const songCheckboxes = document.querySelectorAll('.song-checkbox');
+            const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+
+            // 全选功能
+            selectAllCheckbox.addEventListener('change', function () {
+                const isChecked = selectAllCheckbox.checked;
+                songCheckboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                });
+                updateBatchDeleteButton();
+            });
+
+            // 单个复选框状态变化时更新全选框和批量删除按钮
+            songCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', function () {
+                    updateSelectAllCheckbox();
+                    updateBatchDeleteButton();
+                });
+            });
+
+            // 更新全选框状态
+            function updateSelectAllCheckbox() {
+                const allChecked = Array.from(songCheckboxes).every(checkbox => checkbox.checked);
+                const someChecked = Array.from(songCheckboxes).some(checkbox => checkbox.checked);
+
+                selectAllCheckbox.checked = allChecked;
+                selectAllCheckbox.indeterminate = !allChecked && someChecked;
+            }
+
+            // 更新批量删除按钮状态
+            function updateBatchDeleteButton() {
+                const selectedCount = document.querySelectorAll('.song-checkbox:checked').length;
+                batchDeleteBtn.disabled = selectedCount === 0;
+            }
+
+            // 显示清空列表模态框
+            function showClearListModal() {
+                document.getElementById('clearListModal').style.display = 'block';
+            }
+
+            // 隐藏清空列表模态框
+            function hideClearListModal() {
+                document.getElementById('clearListModal').style.display = 'none';
+            }
+
+            // 显示批量删除模态框
+            function showBatchDeleteModal() {
+                const selectedCheckboxes = document.querySelectorAll('.song-checkbox:checked');
+                const selectedIds = Array.from(selectedCheckboxes).map(cb => cb.dataset.id);
+
+                document.getElementById('deleteCount').textContent = selectedIds.length;
+                document.getElementById('selectedSongsInput').value = JSON.stringify(selectedIds);
+                document.getElementById('batchDeleteModal').style.display = 'block';
+            }
+
+            // 隐藏批量删除模态框
+            function hideBatchDeleteModal() {
+                document.getElementById('batchDeleteModal').style.display = 'none';
+            }
+
+            // 处理表单提交
+            const clearListForm = document.getElementById('clearListForm');
+            if (clearListForm) {
+                clearListForm.addEventListener('submit', function () {
+                    hideClearListModal();
+                });
+            }
+
+            // 使用Jinja2变量传递URL到JavaScript
+            const downloadUrl = "{{ url_for('download_songs') }}";
+            const downloadBtn = document.querySelector('a[href="' + downloadUrl + '"]');
+
+            if (downloadBtn) {
+                downloadBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    startDownload();
+                });
+            }
+
+            function startDownload() {
+                const modal = document.getElementById('downloadModal');
+                const progressBar = document.getElementById('downloadProgress');
+                const statusText = document.getElementById('statusText');
+
+                // 显示模态框
+                modal.style.display = 'flex';
+                progressBar.style.width = '0%';
+                statusText.textContent = '准备下载歌曲大约需要2~3分钟，请耐心等待...';
+
+                // 开始下载
+                fetch(downloadUrl)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            // 更新进度
+                            let progress = 0;
+                            const interval = setInterval(() => {
+                                progress += 5;
+                                progressBar.style.width = `${Math.min(progress, 95)}%`;
+
+                                if (progress >= 95) {
+                                    clearInterval(interval);
+                                    statusText.textContent = '准备下载文件...';
+
+                                    // 模拟短暂延迟后自动下载
+                                    setTimeout(() => {
+                                        window.location.href = data.download_url;
+                                        statusText.textContent = '下载完成！';
+                                        progressBar.style.width = '100%';
+
+                                        // 3秒后关闭模态框
+                                        setTimeout(() => {
+                                            modal.style.display = 'none';
+                                        }, 3000);
+                                    }, 1500);
+                                }
+                            }, 300);
+                        } else {
+                            statusText.textContent = `错误: ${data.message}`;
+                            progressBar.style.backgroundColor = '#dc3545';
+                        }
+                    })
+                    .catch(error => {
+                        statusText.textContent = `请求失败: ${error.message}`;
+                        progressBar.style.backgroundColor = '#dc3545';
+                    });
+            }
+
+            // 将函数暴露到全局作用域
+            window.showClearListModal = showClearListModal;
+            window.hideClearListModal = hideClearListModal;
+            window.showBatchDeleteModal = showBatchDeleteModal;
+            window.hideBatchDeleteModal = hideBatchDeleteModal;
+        });
+    </script>
+
+
+
+
+    <style>
+        /* 进度条模态框样式 */
+        .download-modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .download-modal-content {
+            background-color: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            width: 90%;
+            max-width: 500px;
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 1rem;
+            background-color: var(--background-light);
+            border-bottom: 1px solid #ddd;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        /* 进度条样式 */
+        .progress-container {
+            height: 20px;
+            background-color: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 10px;
+        }
+
+        /* 自定义按钮样式 */
+        .btn-custom {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            min-width: 80px;
+            height: 36px;
+            /* 固定高度 */
+            line-height: 1.5;
+        }
+
+        /* 调整按钮间距 */
+        .d-flex.flex-wrap.gap-2.mb-3 {
+            gap: 1rem;
+        }
+
+        /* 自动审核模态框样式 */
+        #autoReviewModal .table th,
+        #autoReviewModal .table td {
+            vertical-align: middle;
+        }
+
+        #autoReviewModal .btn-custom {
+            margin-right: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+</div>
+{% endblock %}

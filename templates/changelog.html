@@ -1,0 +1,92 @@
+<!-- templates/changelog.html -->
+{% extends "base.html" %}
+
+{% block title %}更新日志 - 柳城点歌系统{% endblock %}
+
+{% block content %}
+<div class="center-container">
+    <div class="center-content" style="max-width: 800px;">
+        <div class="form-card">
+            <h2 class="text-center">系统更新日志</h2>
+            
+            <div class="changelog-list">
+                {% if changelog %}
+                    {% for item in changelog %}
+                    <div class="changelog-item">
+                        <div class="changelog-header">
+                            <h3 class="changelog-version">{{ item.version }}</h3>
+                            <span class="changelog-date">{{ item.date }}</span>
+                        </div>
+                        <div class="changelog-content">
+                            <ul>
+                                {% for change in item.changes %}
+                                <li>{{ change }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    
+                    </div>
+                {% endif %}
+            </div>
+            
+            <div class="text-center mt-4">
+                <a href="{{ url_for('index') }}" class="btn btn-outline-primary">返回首页</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.changelog-list {
+    margin-top: 1rem;
+}
+
+.changelog-item {
+    border-left: 3px solid var(--primary-color);
+    padding-left: 1rem;
+    margin-bottom: 2rem;
+}
+
+.changelog-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.changelog-version {
+    color: var(--primary-color);
+    margin: 0;
+}
+
+.changelog-date {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.changelog-content ul {
+    padding-left: 1.5rem;
+    margin: 0.5rem 0;
+}
+
+.changelog-content li {
+    margin-bottom: 0.3rem;
+}
+
+@media (max-width: 768px) {
+    .changelog-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .changelog-date {
+        margin-top: 0.3rem;
+    }
+}
+</style>
+{% endblock %}
